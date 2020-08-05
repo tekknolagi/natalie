@@ -24,7 +24,7 @@ Value *Env::global_get(const char *name) {
     if (name[0] != '$') {
         NAT_RAISE(env, "NameError", "`%s' is not allowed as a global variable name", name);
     }
-    Value *val = static_cast<Value *>(hashmap_get(env->global_env()->globals(), name));
+    Value *val = env->global_env()->global_get(name);
     if (val) {
         return val;
     } else {
@@ -38,8 +38,7 @@ Value *Env::global_set(const char *name, Value *val) {
     if (name[0] != '$') {
         NAT_RAISE(env, "NameError", "`%s' is not allowed as an global variable name", name);
     }
-    hashmap_remove(env->global_env()->globals(), name);
-    hashmap_put(env->global_env()->globals(), name, val);
+    env->global_env()->global_set(name, val);
     return val;
 }
 

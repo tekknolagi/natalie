@@ -15,17 +15,9 @@ extern "C" {
 
 struct GlobalEnv {
     GlobalEnv() {
-        m_globals = static_cast<struct hashmap *>(malloc(sizeof(struct hashmap)));
-        hashmap_init(m_globals, hashmap_hash_string, hashmap_compare_string, 100);
-        hashmap_set_key_alloc_funcs(m_globals, hashmap_alloc_key_string, free);
     }
 
     ~GlobalEnv() {
-        hashmap_destroy(m_globals);
-    }
-
-    struct hashmap *globals() {
-        return m_globals;
     }
 
     Value *get_symbol(const char *name) {
@@ -38,6 +30,18 @@ struct GlobalEnv {
 
     void add_symbol(const char *name, Value *value) {
         m_symbols[name] = value;
+    }
+
+    Value *global_get(const char *name) {
+        auto result = m_globals.find(name);
+        if (result == m_globals.end()) {
+            return nullptr;
+        }
+        return result->second;
+    }
+
+    void global_set(const char *name, Value *value) {
+        m_globals[name] = value;
     }
 
     ClassValue *Object() { return m_Object; }
@@ -53,7 +57,7 @@ struct GlobalEnv {
     void set_false_obj(FalseValue *false_obj) { m_false_obj = false_obj; }
 
 private:
-    struct hashmap *m_globals { nullptr };
+    std::unordered_map<std::string, Value *> m_globals {};
     std::unordered_map<std::string, Value *> m_symbols {};
     ClassValue *m_Object { nullptr };
     NilValue *m_nil_obj { nullptr };
