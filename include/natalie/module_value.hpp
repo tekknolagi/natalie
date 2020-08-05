@@ -25,7 +25,7 @@ struct ModuleValue : Value {
         : Value { other.type(), other.klass() }
         , m_class_name { strdup(other.m_class_name) }
         , m_superclass { other.m_superclass } {
-        copy_hashmap(m_constants, other.m_constants);
+        other.m_constants = m_constants;
         other.m_methods = m_methods;
         for (ModuleValue *module : const_cast<ModuleValue &>(other).m_included_modules) {
             m_included_modules.push(module);
@@ -104,8 +104,16 @@ struct ModuleValue : Value {
         return other->is_a(env, this);
     }
 
+    Value *_constant_get(const char *name) {
+        auto result = m_constants.find(name);
+        if (result == m_constants.end()) {
+            return nullptr;
+        }
+        return result->second;
+    }
+
 protected:
-    struct hashmap m_constants EMPTY_HASHMAP;
+    std::unordered_map<std::string, Value *> m_constants {};
     const char *m_class_name { nullptr };
     ClassValue *m_superclass { nullptr };
     std::unordered_map<std::string, Method *> m_methods {};

@@ -13,8 +13,6 @@ ModuleValue::ModuleValue(Env *env, const char *name)
 ModuleValue::ModuleValue(Env *env, Type type, ClassValue *klass)
     : Value { type, klass } {
     m_env = Env::new_detatched_block_env(env);
-    hashmap_init(&m_constants, hashmap_hash_string, hashmap_compare_string, 10);
-    hashmap_set_key_alloc_funcs(&m_constants, hashmap_alloc_key_string, free);
 }
 
 Value *ModuleValue::extend(Env *env, ssize_t argc, Value **args) {
@@ -84,7 +82,7 @@ Value *ModuleValue::const_get_or_null(Env *env, const char *name, bool strict, b
     if (!strict) {
         // first search in parent namespaces (not including global, i.e. Object namespace)
         search_parent = this;
-        while (!(val = static_cast<Value *>(hashmap_get(&search_parent->m_constants, name))) && search_parent->owner() && search_parent->owner() != env->Object()) {
+        while (!(val = search_parent->_constant_get(name)) && search_parent->owner() && search_parent->owner() != env->Object()) {
             search_parent = search_parent->owner();
         }
         if (val) return val;
@@ -92,12 +90,12 @@ Value *ModuleValue::const_get_or_null(Env *env, const char *name, bool strict, b
 
     if (define) {
         // don't search superclasses
-        val = static_cast<Value *>(hashmap_get(&m_constants, name));
+        val = _constant_get(name);
         if (val) return val;
     } else {
         // search in superclass hierarchy
         search_parent = this;
-        while (!(val = static_cast<Value *>(hashmap_get(&search_parent->m_constants, name))) && search_parent->m_superclass) {
+        while (!(val = search_parent->_constant_get(name)) && search_parent->m_superclass) {
             search_parent = search_parent->m_superclass;
         }
         if (val) return val;
@@ -105,7 +103,7 @@ Value *ModuleValue::const_get_or_null(Env *env, const char *name, bool strict, b
 
     if (!strict) {
         // lastly, search on the global, i.e. Object namespace
-        val = static_cast<Value *>(hashmap_get(&env->Object()->m_constants, name));
+        val = env->Object()->_constant_get(name);
         if (val) return val;
     }
 
@@ -113,8 +111,7 @@ Value *ModuleValue::const_get_or_null(Env *env, const char *name, bool strict, b
 }
 
 Value *ModuleValue::const_set(Env *env, const char *name, Value *val) {
-    hashmap_remove(&m_constants, name);
-    hashmap_put(&m_constants, name, val);
+    m_constants[name] = val;
     if (val->is_module() && !val->owner()) {
         val->set_owner(this);
     }
