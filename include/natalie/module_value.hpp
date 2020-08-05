@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <unordered_map>
 
 #include "natalie/env.hpp"
 #include "natalie/forward.hpp"
@@ -25,7 +26,7 @@ struct ModuleValue : Value {
         , m_class_name { strdup(other.m_class_name) }
         , m_superclass { other.m_superclass } {
         copy_hashmap(m_constants, other.m_constants);
-        copy_hashmap(m_methods, other.m_methods);
+        other.m_methods = m_methods;
         for (ModuleValue *module : const_cast<ModuleValue &>(other).m_included_modules) {
             m_included_modules.push(module);
         }
@@ -107,7 +108,7 @@ protected:
     struct hashmap m_constants EMPTY_HASHMAP;
     const char *m_class_name { nullptr };
     ClassValue *m_superclass { nullptr };
-    struct hashmap m_methods EMPTY_HASHMAP;
+    std::unordered_map<std::string, Method *> m_methods {};
     struct hashmap m_class_vars EMPTY_HASHMAP;
     Vector<ModuleValue *> m_included_modules {};
 };

@@ -13,8 +13,6 @@ ModuleValue::ModuleValue(Env *env, const char *name)
 ModuleValue::ModuleValue(Env *env, Type type, ClassValue *klass)
     : Value { type, klass } {
     m_env = Env::new_detatched_block_env(env);
-    hashmap_init(&m_methods, hashmap_hash_string, hashmap_compare_string, 10);
-    hashmap_set_key_alloc_funcs(&m_methods, hashmap_alloc_key_string, free);
     hashmap_init(&m_constants, hashmap_hash_string, hashmap_compare_string, 10);
     hashmap_set_key_alloc_funcs(&m_constants, hashmap_alloc_key_string, free);
 }
@@ -129,8 +127,7 @@ void ModuleValue::alias(Env *env, const char *new_name, const char *old_name) {
     if (!method) {
         NAT_RAISE(env, "NameError", "undefined method `%s' for `%v'", old_name, this);
     }
-    free(hashmap_remove(&m_methods, new_name));
-    hashmap_put(&m_methods, new_name, new Method { *method });
+    m_methods[new_name] = new Method { *method };
 }
 
 Value *ModuleValue::eval_body(Env *env, Value *(*fn)(Env *, Value *)) {
@@ -186,14 +183,12 @@ Value *ModuleValue::cvar_set(Env *env, const char *name, Value *val) {
 
 void ModuleValue::define_method(Env *env, const char *name, Value *(*fn)(Env *, Value *, ssize_t, Value **, Block *block)) {
     Method *method = new Method { fn };
-    free(hashmap_remove(&m_methods, name));
-    hashmap_put(&m_methods, name, method);
+    m_methods[name] = method;
 }
 
 void ModuleValue::define_method_with_block(Env *env, const char *name, Block *block) {
     Method *method = new Method { block };
-    free(hashmap_remove(&m_methods, name));
-    hashmap_put(&m_methods, name, method);
+    m_methods[name] = method;
 }
 
 void ModuleValue::undefine_method(Env *env, const char *name) {
@@ -202,15 +197,14 @@ void ModuleValue::undefine_method(Env *env, const char *name) {
 
 // supply an empty array and it will be populated with the method names as symbols
 void ModuleValue::methods(Env *env, ArrayValue *array) {
-    struct hashmap_iter *iter;
-    for (iter = hashmap_iter(&m_methods); iter; iter = hashmap_iter_next(&m_methods, iter)) {
-        const char *name = (char *)hashmap_iter_get_key(iter);
-        array->push(SymbolValue::intern(env, name));
+    for (std::pair<std::string, Method *> name_and_method : m_methods) {
+        auto name = name_and_method.first;
+        array->push(SymbolValue::intern(env, strdup(name.c_str())));
     }
     for (ModuleValue *module : m_included_modules) {
-        for (iter = hashmap_iter(&module->m_methods); iter; iter = hashmap_iter_next(&module->m_methods, iter)) {
-            const char *name = (char *)hashmap_iter_get_key(iter);
-            array->push(SymbolValue::intern(env, name));
+        for (std::pair<std::string, Method *> name_and_method : module->m_methods) {
+            auto name = name_and_method.first;
+            array->push(SymbolValue::intern(env, strdup(name.c_str())));
         }
     }
     if (m_superclass) {
@@ -220,22 +214,21 @@ void ModuleValue::methods(Env *env, ArrayValue *array) {
 
 // returns the method and sets matching_class_or_module to where the method was found
 Method *ModuleValue::find_method(const char *method_name, ModuleValue **matching_class_or_module) {
-    Method *method;
     if (m_included_modules.is_empty()) {
         // no included modules, just search the class/module
         // note: if there are included modules, then the module chain will include this class/module
-        method = static_cast<Method *>(hashmap_get(&m_methods, method_name));
-        if (method) {
+        auto result = m_methods.find(method_name);
+        if (result != m_methods.end()) {
             *matching_class_or_module = m_klass;
-            return method;
+            return result->second;
         }
     }
 
     for (ModuleValue *module : m_included_modules) {
-        method = static_cast<Method *>(hashmap_get(&module->m_methods, method_name));
-        if (method) {
+        auto result = module->m_methods.find(method_name);
+        if (result != module->m_methods.end()) {
             *matching_class_or_module = module;
-            return method;
+            return result->second;
         }
     }
 
