@@ -3,13 +3,13 @@
 namespace Natalie {
 
 SymbolValue *SymbolValue::intern(Env *env, const char *name) {
-    SymbolValue *symbol = static_cast<SymbolValue *>(hashmap_get(env->global_env()->symbols(), name));
+    Value *symbol = env->global_env()->get_symbol(name);
     if (symbol) {
-        return symbol;
+        return symbol->as_symbol();
     } else {
         symbol = new SymbolValue { env, name };
-        hashmap_put(env->global_env()->symbols(), name, symbol);
-        return symbol;
+        env->global_env()->add_symbol(name, symbol);
+        return symbol->as_symbol();
     }
 }
 
