@@ -74,10 +74,6 @@ struct Value : public gc {
 
     Env env() { return m_env; }
 
-    struct hashmap ivars() { // TODO: is this getter really needed?
-        return m_ivars;
-    }
-
     Value *initialize(Env *, ssize_t, Value **, Block *);
 
     bool is_nil() const { return m_type == Type::Nil; }
@@ -214,7 +210,8 @@ private:
     ModuleValue *m_owner { nullptr };
     int m_flags { 0 };
 
-    struct hashmap m_ivars EMPTY_HASHMAP;
+    struct value_map;
+    value_map *m_ivars { nullptr };
 };
 
 }

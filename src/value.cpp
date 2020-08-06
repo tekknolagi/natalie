@@ -1,7 +1,14 @@
 #include "natalie.hpp"
 #include "natalie/forward.hpp"
 
+#include <string>
+#include <unordered_map>
+
 namespace Natalie {
+
+struct Value::value_map {
+    std::unordered_map<std::string, Value *> m_map {};
+};
 
 Value::Value(const Value &other)
     : m_klass { other.m_klass }
@@ -10,7 +17,7 @@ Value::Value(const Value &other)
     , m_owner { other.m_owner }
     , m_flags { other.m_flags } {
     init_ivars();
-    copy_hashmap(m_ivars, other.m_ivars);
+    m_ivars->m_map = other.m_ivars->m_map;
 }
 
 Value *Value::_new(Env *env, Value *klass_value, ssize_t argc, Value **args, Block *block) {
@@ -258,9 +265,9 @@ Value *Value::ivar_get(Env *env, const char *name) {
         NAT_RAISE(env, "NameError", "`%s' is not allowed as an instance variable name", name);
     }
     init_ivars();
-    Value *val = static_cast<Value *>(hashmap_get(&m_ivars, name));
-    if (val) {
-        return val;
+    auto result = m_ivars->m_map.find(name);
+    if (result != m_ivars->m_map.end()) {
+        return result->second;
     } else {
         return env->nil_obj();
     }
@@ -272,8 +279,7 @@ Value *Value::ivar_set(Env *env, const char *name, Value *val) {
         NAT_RAISE(env, "NameError", "`%s' is not allowed as an instance variable name", name);
     }
     init_ivars();
-    hashmap_remove(&m_ivars, name);
-    hashmap_put(&m_ivars, name, val);
+    m_ivars->m_map[name] = val;
     return val;
 }
 
@@ -282,19 +288,18 @@ Value *Value::ivars(Env *env) {
     if (m_type == Value::Type::Integer) {
         return ary;
     }
-    struct hashmap_iter *iter;
-    if (m_ivars.table) {
-        for (iter = hashmap_iter(&m_ivars); iter; iter = hashmap_iter_next(&m_ivars, iter)) {
-            char *name = (char *)hashmap_iter_get_key(iter);
-            ary->push(SymbolValue::intern(env, name));
+    if (m_ivars) {
+        for (std::pair<std::string, Value *> name_and_value : m_ivars->m_map) {
+            auto name = name_and_value.first;
+            ary->push(SymbolValue::intern(env, strdup(name.c_str())));
         }
     }
     return ary;
 }
+
 void Value::init_ivars() {
-    if (m_ivars.table) return;
-    hashmap_init(&m_ivars, hashmap_hash_string, hashmap_compare_string, 100);
-    hashmap_set_key_alloc_funcs(&m_ivars, hashmap_alloc_key_string, free);
+    if (m_ivars) return;
+    m_ivars = new value_map {};
 }
 
 Value *Value::cvar_get(Env *env, const char *name) {
