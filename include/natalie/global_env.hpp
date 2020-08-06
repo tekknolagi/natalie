@@ -3,8 +3,6 @@
 #include <stdlib.h>
 
 #include "natalie/forward.hpp"
-#include <string>
-#include <unordered_map>
 
 namespace Natalie {
 
@@ -14,35 +12,14 @@ extern "C" {
 }
 
 struct GlobalEnv {
-    GlobalEnv() {
-    }
+    GlobalEnv();
+    ~GlobalEnv();
 
-    ~GlobalEnv() {
-    }
+    Value *get_symbol(const char *);
+    void add_symbol(const char *, Value *);
 
-    Value *get_symbol(const char *name) {
-        auto result = m_symbols.find(name);
-        if (result == m_symbols.end()) {
-            return nullptr;
-        }
-        return result->second;
-    }
-
-    void add_symbol(const char *name, Value *value) {
-        m_symbols[name] = value;
-    }
-
-    Value *global_get(const char *name) {
-        auto result = m_globals.find(name);
-        if (result == m_globals.end()) {
-            return nullptr;
-        }
-        return result->second;
-    }
-
-    void global_set(const char *name, Value *value) {
-        m_globals[name] = value;
-    }
+    Value *global_get(const char *);
+    void global_set(const char *, Value *);
 
     ClassValue *Object() { return m_Object; }
     void set_Object(ClassValue *Object) { m_Object = Object; }
@@ -57,8 +34,9 @@ struct GlobalEnv {
     void set_false_obj(FalseValue *false_obj) { m_false_obj = false_obj; }
 
 private:
-    std::unordered_map<std::string, Value *> m_globals {};
-    std::unordered_map<std::string, Value *> m_symbols {};
+    struct value_map;
+    value_map *m_globals { nullptr };
+    value_map *m_symbols { nullptr };
     ClassValue *m_Object { nullptr };
     NilValue *m_nil_obj { nullptr };
     TrueValue *m_true_obj { nullptr };

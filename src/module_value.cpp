@@ -1,6 +1,37 @@
 #include "natalie.hpp"
+#include "natalie/gc.hpp"
+
+#include <string>
+#include <unordered_map>
 
 namespace Natalie {
+
+struct ModuleValue::value_map : public gc {
+    value_map() { }
+    std::unordered_map<std::string, Value *> m_map {};
+};
+
+struct ModuleValue::method_map : public gc {
+    method_map() { }
+    std::unordered_map<std::string, Method *> m_map {};
+};
+
+ModuleValue::ModuleValue(Env *env, ClassValue *klass)
+    : ModuleValue { env, Type::Module, klass } {
+}
+
+ModuleValue::ModuleValue(ModuleValue &other)
+    : Value { other.type(), other.klass() }
+    , m_constants { new value_map {} }
+    , m_class_name { strdup(other.m_class_name) }
+    , m_superclass { other.m_superclass }
+    , m_methods { new method_map {} } {
+    other.m_constants = m_constants;
+    other.m_methods = m_methods;
+    for (ModuleValue *module : const_cast<ModuleValue &>(other).m_included_modules) {
+        m_included_modules.push(module);
+    }
+}
 
 ModuleValue::ModuleValue(Env *env)
     : ModuleValue { env, Value::Type::Module, env->Object()->const_get(env, "Module", true)->as_class() } { }
@@ -11,7 +42,9 @@ ModuleValue::ModuleValue(Env *env, const char *name)
 }
 
 ModuleValue::ModuleValue(Env *env, Type type, ClassValue *klass)
-    : Value { type, klass } {
+    : Value { type, klass }
+    , m_constants { new value_map {} }
+    , m_methods { new method_map {} } {
     m_env = Env::new_detatched_block_env(env);
 }
 
@@ -111,7 +144,7 @@ Value *ModuleValue::const_get_or_null(Env *env, const char *name, bool strict, b
 }
 
 Value *ModuleValue::const_set(Env *env, const char *name, Value *val) {
-    m_constants[name] = val;
+    m_constants->m_map[name] = val;
     if (val->is_module() && !val->owner()) {
         val->set_owner(this);
     }
@@ -124,7 +157,7 @@ void ModuleValue::alias(Env *env, const char *new_name, const char *old_name) {
     if (!method) {
         NAT_RAISE(env, "NameError", "undefined method `%s' for `%v'", old_name, this);
     }
-    m_methods[new_name] = new Method { *method };
+    m_methods->m_map[new_name] = new Method { *method };
 }
 
 Value *ModuleValue::eval_body(Env *env, Value *(*fn)(Env *, Value *)) {
@@ -180,12 +213,12 @@ Value *ModuleValue::cvar_set(Env *env, const char *name, Value *val) {
 
 void ModuleValue::define_method(Env *env, const char *name, Value *(*fn)(Env *, Value *, ssize_t, Value **, Block *block)) {
     Method *method = new Method { fn };
-    m_methods[name] = method;
+    m_methods->m_map[name] = method;
 }
 
 void ModuleValue::define_method_with_block(Env *env, const char *name, Block *block) {
     Method *method = new Method { block };
-    m_methods[name] = method;
+    m_methods->m_map[name] = method;
 }
 
 void ModuleValue::undefine_method(Env *env, const char *name) {
@@ -194,12 +227,12 @@ void ModuleValue::undefine_method(Env *env, const char *name) {
 
 // supply an empty array and it will be populated with the method names as symbols
 void ModuleValue::methods(Env *env, ArrayValue *array) {
-    for (std::pair<std::string, Method *> name_and_method : m_methods) {
+    for (std::pair<std::string, Method *> name_and_method : m_methods->m_map) {
         auto name = name_and_method.first;
         array->push(SymbolValue::intern(env, strdup(name.c_str())));
     }
     for (ModuleValue *module : m_included_modules) {
-        for (std::pair<std::string, Method *> name_and_method : module->m_methods) {
+        for (std::pair<std::string, Method *> name_and_method : module->m_methods->m_map) {
             auto name = name_and_method.first;
             array->push(SymbolValue::intern(env, strdup(name.c_str())));
         }
@@ -214,16 +247,16 @@ Method *ModuleValue::find_method(const char *method_name, ModuleValue **matching
     if (m_included_modules.is_empty()) {
         // no included modules, just search the class/module
         // note: if there are included modules, then the module chain will include this class/module
-        auto result = m_methods.find(method_name);
-        if (result != m_methods.end()) {
+        auto result = m_methods->m_map.find(method_name);
+        if (result != m_methods->m_map.end()) {
             *matching_class_or_module = m_klass;
             return result->second;
         }
     }
 
     for (ModuleValue *module : m_included_modules) {
-        auto result = module->m_methods.find(method_name);
-        if (result != module->m_methods.end()) {
+        auto result = module->m_methods->m_map.find(method_name);
+        if (result != module->m_methods->m_map.end()) {
             *matching_class_or_module = module;
             return result->second;
         }
@@ -452,6 +485,14 @@ Value *ModuleValue::alias_method(Env *env, Value *new_name_value, Value *old_nam
     }
     alias(env, new_name, old_name);
     return this;
+}
+
+Value *ModuleValue::_constant_get(const char *name) {
+    auto result = m_constants->m_map.find(name);
+    if (result == m_constants->m_map.end()) {
+        return nullptr;
+    }
+    return result->second;
 }
 
 }
