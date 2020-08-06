@@ -16,7 +16,6 @@ struct ModuleValue : Value {
     ModuleValue(Env *);
     ModuleValue(Env *, const char *);
     ModuleValue(Env *, Type, ClassValue *);
-
     ModuleValue(Env *, ClassValue *);
     ModuleValue(ModuleValue &);
 
@@ -92,8 +91,6 @@ struct ModuleValue : Value {
         return other->is_a(env, this);
     }
 
-    Value *_constant_get(const char *);
-
 protected:
     struct value_map;
     struct method_map;
@@ -101,7 +98,7 @@ protected:
     const char *m_class_name { nullptr };
     ClassValue *m_superclass { nullptr };
     method_map *m_methods { nullptr };
-    struct hashmap m_class_vars EMPTY_HASHMAP;
+    value_map *m_class_vars { nullptr };
     Vector<ModuleValue *> m_included_modules {};
 };
 
