@@ -18,7 +18,7 @@ struct HashValue : Value {
         Key *next { nullptr };
         Value *key { nullptr };
         Value *val { nullptr };
-        Env env {};
+        size_t hash { 0 };
         bool removed { false };
     };
 
@@ -30,27 +30,16 @@ struct HashValue : Value {
     HashValue(Env *env)
         : HashValue { env, env->Object()->const_get_or_panic(env, "Hash", true)->as_class() } { }
 
-    HashValue(Env *env, ClassValue *klass)
-        : Value { Value::Type::Hash, klass }
-        , m_default_value { env->nil_obj() } {
-        hashmap_init(&m_hashmap, hash, compare, 256);
-    }
+    HashValue(Env *, ClassValue *);
 
     ~HashValue() {
         destroy_key_list();
-        for (HashValue::Key &node : *this) {
-            delete static_cast<Val *>(hashmap_get(&m_hashmap, &node));
-        }
-        hashmap_destroy(&m_hashmap);
         delete m_default_block;
     }
 
     static Value *square_new(Env *, ssize_t argc, Value **args);
 
-    static size_t hash(const void *);
-    static int compare(const void *, const void *);
-
-    ssize_t size() { return m_hashmap.num_entries; }
+    ssize_t size();
     Value *size(Env *);
 
     Value *get(Env *, Value *);
@@ -131,6 +120,8 @@ struct HashValue : Value {
     Value *has_key(Env *, Value *);
 
 private:
+    struct value_map;
+
     void key_list_remove_node(Key *);
     Key *key_list_append(Env *, Value *, Value *);
 
@@ -146,7 +137,7 @@ private:
     }
 
     Key *m_key_list { nullptr };
-    struct hashmap m_hashmap EMPTY_HASHMAP;
+    value_map *m_hashmap { nullptr };
     bool m_is_iterating { false };
     Value *m_default_value { nullptr };
     Block *m_default_block { nullptr };

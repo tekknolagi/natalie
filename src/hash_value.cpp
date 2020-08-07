@@ -1,38 +1,49 @@
 #include "natalie.hpp"
 
+#include <string>
+#include <unordered_map>
+
 namespace Natalie {
 
-// this is used by the hashmap library and assumes that obj->env has been set
-size_t HashValue::hash(const void *key) {
-    Key *key_p = (Key *)key;
-    assert(NAT_OBJ_HAS_ENV2(key_p));
-    Value *hash_obj = key_p->key->send(&key_p->env, "hash");
-    assert(hash_obj->type() == Value::Type::Integer);
-    return hash_obj->as_integer()->to_int64_t();
-}
+auto hash = [](HashValue::Key *key) {
+    return key->hash;
+};
 
-// this is used by the hashmap library to compare keys
-int HashValue::compare(const void *a, const void *b) {
-    Key *a_p = (Key *)a;
-    Key *b_p = (Key *)b;
-    // NOTE: Only one of the keys will have a relevant Env, i.e. the one with a non-null global_env.
-    // This is a bit of a hack to get around the fact that we can't pass any extra args to hashmap_* functions.
-    // TODO: Write our own hashmap implementation that passes Env around. :^)
-    Env *env = a_p->env.global_env() ? &a_p->env : &b_p->env;
-    assert(env);
-    assert(env->global_env());
-    Value *a_hash = a_p->key->send(env, "hash");
-    Value *b_hash = b_p->key->send(env, "hash");
-    assert(a_hash->type() == Value::Type::Integer);
-    assert(b_hash->type() == Value::Type::Integer);
-    return a_hash->as_integer()->to_int64_t() - b_hash->as_integer()->to_int64_t();
+auto equal = [](HashValue::Key *a, HashValue::Key *b) {
+    return a->hash == b->hash;
+};
+
+struct HashValue::value_map : public gc {
+    Val *find(Key *key) {
+        auto result = m_map.find(key);
+        if (result == m_map.end()) {
+            return nullptr;
+        }
+        return result->second;
+    }
+
+    void set(Key *key, Val *val) {
+        m_map[key] = val;
+    }
+
+    size_t erase(Key *key) {
+        return m_map.erase(key);
+    }
+
+    std::unordered_map<Key *, Val *, decltype(hash), decltype(equal)> m_map { 8, hash, equal };
+};
+
+HashValue::HashValue(Env *env, ClassValue *klass)
+    : Value { Value::Type::Hash, klass }
+    , m_hashmap { new value_map {} }
+    , m_default_value { env->nil_obj() } {
 }
 
 Value *HashValue::get(Env *env, Value *key) {
     Key key_container;
     key_container.key = key;
-    key_container.env = *env;
-    Val *container = static_cast<Val *>(hashmap_get(&m_hashmap, &key_container));
+    key_container.hash = key->send(env, "hash")->as_integer()->to_int64_t();
+    Val *container = m_hashmap->find(&key_container);
     Value *val = container ? container->val : nullptr;
     return val;
 }
@@ -50,8 +61,8 @@ void HashValue::put(Env *env, Value *key, Value *val) {
     NAT_ASSERT_NOT_FROZEN(this);
     Key key_container;
     key_container.key = key;
-    key_container.env = *env;
-    Val *container = static_cast<Val *>(hashmap_get(&m_hashmap, &key_container));
+    key_container.hash = key->send(env, "hash")->as_integer()->to_int64_t();
+    Val *container = m_hashmap->find(&key_container);
     if (container) {
         container->key->val = val;
         container->val = val;
@@ -62,18 +73,16 @@ void HashValue::put(Env *env, Value *key, Value *val) {
         container = static_cast<Val *>(malloc(sizeof(Val)));
         container->key = key_list_append(env, key, val);
         container->val = val;
-        hashmap_put(&m_hashmap, container->key, container);
-        // NOTE: env must be current and relevant at all times
-        // See note on hashmap_compare for more details
-        container->key->env = {};
+        m_hashmap->set(container->key, container);
     }
 }
 
 Value *HashValue::remove(Env *env, Value *key) {
     Key key_container;
     key_container.key = key;
-    key_container.env = *env;
-    Val *container = static_cast<Val *>(hashmap_remove(&m_hashmap, &key_container));
+    key_container.hash = key->send(env, "hash")->as_integer()->to_int64_t();
+    Val *container = m_hashmap->find(&key_container);
+    m_hashmap->erase(&key_container);
     if (container) {
         key_list_remove_node(container->key);
         Value *val = container->val;
@@ -95,7 +104,7 @@ HashValue::Key *HashValue::key_list_append(Env *env, Value *key, Value *val) {
         // ^______________________________|
         new_last->prev = last;
         new_last->next = first;
-        new_last->env = Env::new_detatched_block_env(env);
+        new_last->hash = key->send(env, "hash")->as_integer()->to_int64_t();
         new_last->removed = false;
         first->prev = new_last;
         last->next = new_last;
@@ -106,7 +115,7 @@ HashValue::Key *HashValue::key_list_append(Env *env, Value *key, Value *val) {
         node->val = val;
         node->prev = node;
         node->next = node;
-        node->env = Env::new_detatched_block_env(env);
+        node->hash = key->send(env, "hash")->as_integer()->to_int64_t();
         node->removed = false;
         m_key_list = node;
         return node;
@@ -227,6 +236,10 @@ Value *HashValue::delete_key(Env *env, Value *key) {
     }
 }
 
+ssize_t HashValue::size() {
+    return m_hashmap->m_map.size();
+}
+
 Value *HashValue::size(Env *env) {
     assert(size() <= NAT_MAX_INT);
     return new IntegerValue { env, static_cast<int64_t>(size()) };
@@ -243,6 +256,9 @@ Value *HashValue::eq(Env *env, Value *other_value) {
     Value *other_val;
     for (HashValue::Key &node : *this) {
         other_val = other->get(env, node.key);
+        if (!other_val) {
+            return env->false_obj();
+        }
         if (!node.val->send(env, "==", 1, &other_val, nullptr)->is_truthy()) {
             return env->false_obj();
         }

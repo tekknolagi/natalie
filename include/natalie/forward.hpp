@@ -34,8 +34,6 @@ struct Value;
 struct VoidPValue;
 struct KernelModule;
 
-void copy_hashmap(struct hashmap &, const struct hashmap &);
-
 using MethodFnPtr = Value *(*)(Env *, Value *, ssize_t, Value **, Block *);
 
 template <typename T>
