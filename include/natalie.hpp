@@ -44,7 +44,6 @@
 namespace Natalie {
 
 extern "C" {
-#include "hashmap.h"
 #include "onigmo.h"
 }
 
@@ -92,5 +91,7 @@ std::pair<Value *, Value *> coerce(Env *, Value *, Value *);
 char *zero_string(int);
 
 Block *proc_to_block_arg(Env *, Value *);
+
+size_t djb2(const char *);
 
 }

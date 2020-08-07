@@ -378,4 +378,14 @@ Block *proc_to_block_arg(Env *env, Value *proc_or_nil) {
     return proc_or_nil->to_proc(env)->block();
 }
 
+// http://www.cse.yorku.ca/~oz/hash.html
+size_t djb2(const char *str) {
+    size_t hash = 5381;
+    int c;
+    while ((c = *str++)) {
+        hash = ((hash << 5) + hash) + c;
+    }
+    return hash;
+}
+
 }

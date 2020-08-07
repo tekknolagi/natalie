@@ -7,7 +7,6 @@
 namespace Natalie {
 
 extern "C" {
-#include "hashmap.h"
 #include "onigmo.h"
 }
 

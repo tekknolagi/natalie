@@ -95,7 +95,7 @@ Value *KernelModule::get_usage(Env *env) {
 
 Value *KernelModule::hash(Env *env) {
     StringValue *inspected = send(env, "inspect")->as_string();
-    ssize_t hash_value = hashmap_hash_string(inspected->c_str());
+    ssize_t hash_value = Natalie::djb2(inspected->c_str());
     return new IntegerValue { env, hash_value };
 }
 
